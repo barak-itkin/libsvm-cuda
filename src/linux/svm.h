@@ -24,6 +24,7 @@ struct svm_problem
 };
 
 #else
+#error "Only dense mode is supported"
 struct svm_node
 {
 	int index;

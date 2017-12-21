@@ -1,5 +1,5 @@
-#include "/usr/local/cuda-5.5/include/cuda_runtime.h"
-#include "/usr/local/cuda-5.5/include/cublas_v2.h"
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
 
 // Scalars
 const float alpha = 1;
