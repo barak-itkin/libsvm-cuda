@@ -81,7 +81,7 @@ class svm_problem(Structure):
 		self.l = l = len(y)
 
 		max_idx = 0
-		x_space = []
+		x_space = self.x_space = []
 		for i, xi in enumerate(x):
 			tmp_xi, tmp_idx = gen_svm_nodearray(xi)
 			x_space += [tmp_xi]
@@ -91,7 +91,7 @@ class svm_problem(Structure):
 		self.y = (c_double * l)()
 		for i, yi in enumerate(y): self.y[i] = yi
 
-		self.x = (POINTER(svm_node) * l)()
+		self.x = (svm_node * l)()
 		for i, xi in enumerate(x_space): self.x[i] = xi
 
 class svm_parameter(Structure):
