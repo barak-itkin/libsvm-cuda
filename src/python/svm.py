@@ -17,15 +17,15 @@ __all__ = ['libsvm', 'svm_problem', 'svm_parameter',
 try:
 	dirname = path.dirname(path.abspath(__file__))
 	if sys.platform == 'win32':
-		libsvm = CDLL(path.join(dirname, r'..\windows\libsvm.dll'))
+		libsvm = CDLL(path.join(dirname, r'..\windows\libsvm-gpu.dll'))
 	else:
-		libsvm = CDLL(path.join(dirname, '../libsvm.so.2'))
+		libsvm = CDLL(path.join(dirname, '../linux/libsvm-gpu.so'))
 except:
 # For unix the prefix 'lib' is not considered.
-	if find_library('svm'):
-		libsvm = CDLL(find_library('svm'))
-	elif find_library('libsvm'):
-		libsvm = CDLL(find_library('libsvm'))
+	if find_library('svm-gpu'):
+		libsvm = CDLL(find_library('svm-gpu'))
+	elif find_library('libsvm-gpu'):
+		libsvm = CDLL(find_library('libsvm-gpu'))
 	else:
 		raise Exception('LIBSVM library not found.')
 
@@ -53,43 +53,26 @@ def fillprototype(f, restype, argtypes):
 	f.argtypes = argtypes
 
 class svm_node(Structure):
-	_names = ["index", "value"]
-	_types = [c_int, c_double]
+	_names = ["dim", "values"]
+	_types = [c_int, POINTER(c_double)]
 	_fields_ = genFields(_names, _types)
 
 	def __str__(self):
-		return '%d:%g' % (self.index, self.value)
+		return '%d:%g' % (self.dim, self.value)
 
-def gen_svm_nodearray(xi, feature_max=None, isKernel=None):
-	if isinstance(xi, dict):
-		index_range = xi.keys()
-	elif isinstance(xi, (list, tuple)):
-		if not isKernel:
-			xi = [0] + xi  # idx should start from 1
-		index_range = range(len(xi))
-	else:
-		raise TypeError('xi should be a dictionary, list or tuple')
+def gen_svm_nodearray(xi):
+	if not isinstance(xi, (list, tuple)):
+		raise TypeError('xi should be a list or tuple')
 
-	if feature_max:
-		assert(isinstance(feature_max, int))
-		index_range = filter(lambda j: j <= feature_max, index_range)
-	if not isKernel:
-		index_range = filter(lambda j:xi[j] != 0, index_range)
-
-	index_range = sorted(index_range)
-	ret = (svm_node * (len(index_range)+1))()
-	ret[-1].index = -1
-	for idx, j in enumerate(index_range):
-		ret[idx].index = j
-		ret[idx].value = xi[j]
-	max_idx = 0
-	if index_range:
-		max_idx = index_range[-1]
-	return ret, max_idx
+	ret = svm_node()
+	ret.dim = len(xi)
+	ret.values = (c_double * ret.dim)()
+	for i, v in enumerate(xi): ret.values[i] = v
+	return ret, ret.dim
 
 class svm_problem(Structure):
 	_names = ["l", "y", "x"]
-	_types = [c_int, POINTER(c_double), POINTER(POINTER(svm_node))]
+	_types = [c_int, POINTER(c_double), POINTER(svm_node)]
 	_fields_ = genFields(_names, _types)
 
 	def __init__(self, y, x, isKernel=None):
@@ -98,9 +81,9 @@ class svm_problem(Structure):
 		self.l = l = len(y)
 
 		max_idx = 0
-		x_space = self.x_space = []
+		x_space = []
 		for i, xi in enumerate(x):
-			tmp_xi, tmp_idx = gen_svm_nodearray(xi,isKernel=isKernel)
+			tmp_xi, tmp_idx = gen_svm_nodearray(xi)
 			x_space += [tmp_xi]
 			max_idx = max(max_idx, tmp_idx)
 		self.n = max_idx
@@ -109,7 +92,7 @@ class svm_problem(Structure):
 		for i, yi in enumerate(y): self.y[i] = yi
 
 		self.x = (POINTER(svm_node) * l)()
-		for i, xi in enumerate(self.x_space): self.x[i] = xi
+		for i, xi in enumerate(x_space): self.x[i] = xi
 
 class svm_parameter(Structure):
 	_names = ["svm_type", "kernel_type", "degree", "gamma", "coef0",
@@ -232,7 +215,7 @@ class svm_parameter(Structure):
 class svm_model(Structure):
 	_names = ['param', 'nr_class', 'l', 'SV', 'sv_coef', 'rho',
 			'probA', 'probB', 'sv_indices', 'label', 'nSV', 'free_sv']
-	_types = [svm_parameter, c_int, c_int, POINTER(POINTER(svm_node)),
+	_types = [svm_parameter, c_int, c_int, POINTER(svm_node),
 			POINTER(POINTER(c_double)), POINTER(c_double),
 			POINTER(c_double), POINTER(c_double), POINTER(c_int),
 			POINTER(c_int), POINTER(c_int), c_int]
@@ -279,16 +262,8 @@ class svm_model(Structure):
 
 	def get_SV(self):
 		result = []
-		for sparse_sv in self.SV[:self.l]:
-			row = dict()
-
-			i = 0
-			while True:
-				row[sparse_sv[i].index] = sparse_sv[i].value
-				if sparse_sv[i].index == -1:
-					break
-				i += 1
-
+		for sv in self.SV[:self.l]:
+			row = [sv.values[i] for i in range(sv.dim)]
 			result.append(row)
 		return result
 
